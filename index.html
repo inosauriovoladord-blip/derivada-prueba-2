@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>⚡ DerivaNatural ⚡ | Sin asteriscos</title>
+    <!-- math.js para la derivación simbólica -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.7.0/math.js"></script>
+    <style>
+        /* Estilos mínimos para que se vea decente, pero puedes borrarlos si quieres solo HTML */
+        body { background: #0a0f1e; color: #0ff; font-family: monospace; padding: 2rem; max-width: 900px; margin: auto; }
+        input, button { background: #1a1f2e; border: 1px solid cyan; color: cyan; padding: 0.7rem; font-size: 1.2rem; border-radius: 8px; }
+        button { cursor: pointer; background: #0a0f1e; }
+        button:hover { background: cyan; color: black; }
+        .resultado { background: #010a14; border-left: 4px solid cyan; padding: 1rem; margin-top: 1.5rem; white-space: pre-wrap; }
+        .paso { border-bottom: 1px dotted #0ff3; padding: 0.5rem 0; }
+        .ejemplos { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+        .ejemplo { background: #0ff1; border: 1px solid cyan; border-radius: 20px; padding: 0.2rem 0.8rem; cursor: pointer; }
+        .firma { text-align: right; margin-top: 2rem; border-top: 1px solid cyan; padding-top: 0.5rem; font-size: 0.8rem; }
+<link rel="stylesheet" href="estilos.css">
+    </style>
+</head>
+<body>
+
+<h2>🧠 DERIVADOR SIN ASTERISCOS</h2>
+<p>Escribe directo: <strong>3x^2 , sen2x , cos3x , ln5x , e^(2x)</strong> (sin * ni paréntesis extras)</p>
+
+<input type="text" id="funcion" size="50" value="3x^2" style="width: 100%;">
+<button id="derivar">📐 DERIVAR</button>
+
+<div class="ejemplos">
+    <span>🔽 Ejemplos:</span>
+    <div class="ejemplo" data-expr="3x^2">3x²</div>
+    <div class="ejemplo" data-expr="sen2x">sen2x</div>
+    <div class="ejemplo" data-expr="cos3x">cos3x</div>
+    <div class="ejemplo" data-expr="tanx">tanx</div>
+    <div class="ejemplo" data-expr="e^(2x)">e^(2x)</div>
+    <div class="ejemplo" data-expr="ln5x">ln5x</div>
+    <div class="ejemplo" data-expr="x^2 senx">x² senx</div>
+</div>
+
+<div id="resultado" class="resultado">✨ Escribe una función y dale clic ✨</div>
+
+<div class="firma">Daniel Espinoza Elías 6to C</div>
+
+<script>
+    // --------------------------------------------------------------
+    // 1. Preprocesador: convierte notación natural a math.js
+    // --------------------------------------------------------------
+    function preprocesar(expr) {
+        let s = expr.replace(/\s/g, '');
+        // sen -> sin
+        s = s.replace(/sen/g, 'sin');
+        
+        // Reemplazar funciones temporalmente para no interferir
+        let funciones = ['sin', 'cos', 'tan', 'ln', 'exp'];
+        let tokens = {};
+        funciones.forEach((f, i) => {
+            let token = `__F${i}__`;
+            s = s.replace(new RegExp(f, 'g'), token);
+            tokens[token] = f;
+        });
+        
+        // Agregar * entre número y letra: 3x -> 3*x
+        s = s.replace(/(\d+)([a-zA-Z])/g, '$1*$2');
+        // entre ) y letra
+        s = s.replace(/\)([a-zA-Z])/g, ')*$1');
+        // entre letra y (
+        s = s.replace(/([a-zA-Z])\(/g, '$1*(');
+        
+        // Restaurar funciones
+        for (let [tok, nom] of Object.entries(tokens)) {
+            s = s.replace(new RegExp(tok, 'g'), nom);
+        }
+        
+        // Manejar trigonométricas sin paréntesis: sin2x -> sin(2*x), cos3x -> cos(3*x)
+        s = s.replace(/(sin|cos|tan)(\d*)(x?)/g, (m, fn, num, xv) => {
+            let arg = '';
+            if (num && xv) arg = `${num}*${xv}`;
+            else if (num && !xv) arg = num;
+            else if (!num && xv) arg = xv;
+            else arg = 'x';
+            return `${fn}(${arg})`;
+        });
+        
+        // ln5x -> ln(5*x)
+        s = s.replace(/ln(\d*)(x?)/g, (m, num, xv) => {
+            let arg = '';
+            if (num && xv) arg = `${num}*${xv}`;
+            else if (num && !xv) arg = num;
+            else if (!num && xv) arg = xv;
+            else arg = 'x';
+            return `ln(${arg})`;
+        });
+        
+        // e^(2x) -> exp(2*x)
+        s = s.replace(/e\^\(?(\d*x?)\)?/g, (m, exp) => {
+            if (exp.includes('x')) return `exp(${exp.replace(/(\d+)(x)/, '$1*$2')})`;
+            else return `exp(${exp}*x)`;
+        });
+        
+        return s;
+    }
+    
+    // --------------------------------------------------------------
+    // 2. Limpiar asteriscos en expresiones finales (para mostrarlos bonito)
+    // --------------------------------------------------------------
+    function limpiarAsteriscos(expr) {
+        // Eliminar * entre número y letra: 6*x -> 6x
+        let limpia = expr.replace(/(\d+)\*([a-zA-Z])/g, '$1$2');
+        // Eliminar * entre letra y número: x*3 -> x3 (no es común, pero mejor x·3? Lo dejamos x*3 por si acaso)
+        limpia = limpia.replace(/([a-zA-Z])\*(\d+)/g, '$1*$2');  // lo dejamos, no molesta
+        // Eliminar * entre letra y función: x*sin(x) -> x sin(x)
+        limpia = limpia.replace(/([a-zA-Z])\*(sin|cos|tan|ln|exp)/g, '$1 $2');
+        // Eliminar * entre número y función: 2*sin(x) -> 2 sin(x)
+        limpia = limpia.replace(/(\d+)\*(sin|cos|tan|ln|exp)/g, '$1 $2');
+        // Eliminar * entre ) y ( o similar
+        limpia = limpia.replace(/\*\(/g, '(');
+        limpia = limpia.replace(/\)\*/g, ')');
+        // Caso especial: x * x -> x x (pero casi no pasa)
+        return limpia;
+    }
+    
+    // --------------------------------------------------------------
+    // 3. Derivación paso a paso (adaptada de la versión anterior)
+    // --------------------------------------------------------------
+    function derivarConPasos(exprMath) {
+        let steps = [];
+        let arbol;
+        try {
+            arbol = math.parse(exprMath);
+        } catch(e) {
+            return { error: "Expresión inválida: " + e.message };
+        }
+        
+        function derivaNodo(node) {
+            if (node.type === 'ConstantNode') {
+                steps.push(`🔹 Constante ${node} ➜ derivada = 0`);
+                return "0";
+            }
+            if (node.type === 'SymbolNode' && node.name === 'x') {
+                steps.push(`🔹 Variable 'x' ➜ derivada = 1`);
+                return "1";
+            }
+            if (node.type === 'OperatorNode') {
+                const op = node.op;
+                if (op === '+') {
+                    let izq = derivaNodo(node.args[0]);
+                    let der = derivaNodo(node.args[1]);
+                    steps.push(`📌 Suma: d/dx[${node.args[0]} + ${node.args[1]}] = ${izq} + ${der}`);
+                    return `(${izq} + ${der})`;
+                }
+                if (op === '-') {
+                    let izq = derivaNodo(node.args[0]);
+                    let der = derivaNodo(node.args[1]);
+                    steps.push(`📌 Resta: d/dx[${node.args[0]} - ${node.args[1]}] = ${izq} - ${der}`);
+                    return `(${izq} - ${der})`;
+                }
+                if (op === '*') {
+                    let u = node.args[0];
+                    let v = node.args[1];
+                    let uDer = derivaNodo(u);
+                    let vDer = derivaNodo(v);
+                    steps.push(`📌 Producto: d/dx[${u}·${v}] = (${uDer})·(${v}) + (${u})·(${vDer})`);
+                    return `(${uDer} * ${v} + ${u} * ${vDer})`;
+                }
+                if (op === '/') {
+                    let u = node.args[0];
+                    let v = node.args[1];
+                    let uDer = derivaNodo(u);
+                    let vDer = derivaNodo(v);
+                    steps.push(`📌 Cociente: d/dx[${u}/${v}] = ((${uDer})·(${v}) - (${u})·(${vDer})) / (${v})²`);
+                    return `(${uDer} * ${v} - ${u} * ${vDer}) / (${v})^2`;
+                }
+                if (op === '^') {
+                    let base = node.args[0];
+                    let exp = node.args[1];
+                    if (exp.type === 'ConstantNode') {
+                        let n = exp.value;
+                        if (base.type === 'SymbolNode' && base.name === 'x') {
+                            let der = (n === 1) ? "1" : (n === 2 ? "2*x" : `${n} * x^${n-1}`);
+                            steps.push(`📌 Potencia: d/dx[x^${n}] = ${n}·x^${n-1} = ${der}`);
+                            return der;
+                        } else {
+                            let baseDer = derivaNodo(base);
+                            let cadena = `${n} * (${base})^${n-1} * (${baseDer})`;
+                            steps.push(`📌 Cadena potencia: d/dx[(${base})^${n}] = ${n}·(${base})^${n-1}·d/dx[base] = ${cadena}`);
+                            return cadena;
+                        }
+                    } else {
+                        let fallback = math.derivative(node.toString(), 'x').toString();
+                        steps.push(`⚠️ Potencia variable, derivada directa: ${fallback}`);
+                        return fallback;
+                    }
+                }
+            }
+            if (node.type === 'FunctionNode') {
+                let fn = node.name;
+                let arg = node.args[0];
+                let argDer = derivaNodo(arg);
+                let argStr = arg.toString();
+                if (fn === 'sin') {
+                    steps.push(`📌 seno: d/dx[sen(${argStr})] = cos(${argStr})·(${argDer})`);
+                    return `cos(${argStr}) * (${argDer})`;
+                }
+                if (fn === 'cos') {
+                    steps.push(`📌 coseno: d/dx[cos(${argStr})] = -sen(${argStr})·(${argDer})`);
+                    return `-sin(${argStr}) * (${argDer})`;
+                }
+                if (fn === 'tan') {
+                    steps.push(`📌 tangente: d/dx[tan(${argStr})] = sec²(${argStr})·(${argDer})`);
+                    return `sec^2(${argStr}) * (${argDer})`;
+                }
+                if (fn === 'exp') {
+                    steps.push(`📌 exponencial: d/dx[e^(${argStr})] = e^(${argStr})·(${argDer})`);
+                    return `exp(${argStr}) * (${argDer})`;
+                }
+                if (fn === 'ln') {
+                    steps.push(`📌 logaritmo: d/dx[ln(${argStr})] = (1/${argStr})·(${argDer})`);
+                    return `(1 / (${argStr})) * (${argDer})`;
+                }
+                let fallback = math.derivative(node.toString(), 'x').toString();
+                steps.push(`🔸 Función ${fn} → derivada directa: ${fallback}`);
+                return fallback;
+            }
+            if (node.type === 'ParenthesisNode') {
+                return derivaNodo(node.content);
+            }
+            let fallback = math.derivative(node.toString(), 'x').toString();
+            steps.push(`⚠️ Nodo ${node.type} → ${fallback}`);
+            return fallback;
+        }
+        
+        let derivadaRaw = derivaNodo(arbol);
+        // Limpiar paréntesis dobles
+        derivadaRaw = derivadaRaw.replace(/\(\(/g, '(').replace(/\)\)/g, ')');
+        // Quitar asteriscos en el resultado final
+        let derivadaLimpia = limpiarAsteriscos(derivadaRaw);
+        // También limpiar asteriscos en cada paso (opcional, pero mejora la vista)
+        let stepsLimpios = steps.map(p => limpiarAsteriscos(p));
+        return { steps: stepsLimpios, derivada: derivadaLimpia, exito: true };
+    }
+    
+    // --------------------------------------------------------------
+    // 4. Mostrar resultados
+    // --------------------------------------------------------------
+    function mostrar(original, procesada, resultado) {
+        const contenedor = document.getElementById('resultado');
+        if (resultado.error) {
+            contenedor.innerHTML = `<div style="color:#f66;">❌ ${resultado.error}</div>`;
+            return;
+        }
+        let html = `<div><strong>📌 Función original:</strong> ${original}</div>`;
+        html += `<div><strong>🔧 Interpretada como:</strong> ${procesada}</div><hr>`;
+        html += `<div><strong>🔍 Pasos:</strong></div>`;
+        resultado.steps.forEach((p, i) => {
+            html += `<div class="paso">${i+1}. ${p}</div>`;
+        });
+        html += `<hr><div><strong>🧨 DERIVADA FINAL:</strong> f'(x) = ${resultado.derivada}</div>`;
+        contenedor.innerHTML = html;
+    }
+    
+    // --------------------------------------------------------------
+    // 5. Eventos
+    // --------------------------------------------------------------
+    document.getElementById('derivar').addEventListener('click', () => {
+        let original = document.getElementById('funcion').value.trim();
+        if (!original) return;
+        let procesada = preprocesar(original);
+        try {
+            math.parse(procesada);  // validar
+            let res = derivarConPasos(procesada);
+            mostrar(original, procesada, res);
+        } catch(e) {
+            document.getElementById('resultado').innerHTML = `<div style="color:#f66;">❌ Error: ${e.message}<br>Usa notación como: 3x^2, sen2x, cos3x, ln5x, e^(2x)</div>`;
+        }
+    });
+    
+    // Ejemplos
+    document.querySelectorAll('.ejemplo').forEach(el => {
+        el.addEventListener('click', () => {
+            let expr = el.getAttribute('data-expr');
+            document.getElementById('funcion').value = expr;
+            document.getElementById('derivar').click();
+        });
+    });
+    
+    // Cargar ejemplo inicial
+    window.addEventListener('load', () => {
+        document.getElementById('derivar').click();
+    });
+</script>
+</body>
+</html>
